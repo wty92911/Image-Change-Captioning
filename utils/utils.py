@@ -300,5 +300,8 @@ class CrossEn(nn.Module):
         :param sim_matrix: similarity matrix of size (batch_size, batch_size), unnormailzed
         :return: loss (scalar)
         """
-    
-        return NotImplementedError
+        batch_size = sim_matrix.shape[0]
+        labels = torch.arange(start=0, end=batch_size, dtype=torch.int64)
+        labels = labels.to(sim_matrix.device)
+        loss = F.cross_entropy(sim_matrix, labels)
+        return loss

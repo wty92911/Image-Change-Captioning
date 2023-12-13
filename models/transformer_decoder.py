@@ -34,9 +34,14 @@ class PositionEncoding(nn.Module):
         expected pe to be of shape [max_len, n_filters]. 
         you can refer to the lecture slides for the formula, or https://kazemnejad.com/blog/transformer_architecture_positional_encoding/ for a quick explanation.
         """
-        pe = ...
+        super(PositionEncoding, self).__init__()
+        position = torch.arange(0, max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, n_filters, 2).float() * -(math.log(10000.0) / n_filters))
+        pe = torch.zeros(max_len, n_filters)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # Add batch dimension
         self.register_buffer("pe", pe)  # buffer is a tensor, not a variable, (L, D)
-        raise NotImplementedError
 
     def forward(self, x):
         """
