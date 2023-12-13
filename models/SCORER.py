@@ -51,14 +51,19 @@ class Attention(nn.Module):
         you should also apply dropout to the attention scores, and return the mean attention scores over all heads.
         """
         #--- You should implement the linear projection here. ---#
-        raise NotImplementedError
-    
+        # softmax(QKT/sqrt(D))V
+        query = self.transpose_for_scores(self.query(query_states))
+        key = self.transpose_for_scores(self.key(key_states))
+        value = self.transpose_for_scores(self.value(value_states))
+        # [N, nH, Lq, dh]
+        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
+        
         #####################################
         #--- You don't need to change the code in this part. ---#
         # multi-head token-wise matching
         mask = torch.Tensor(np.ones([batch, L])).cuda()
         mask_sum = mask.sum(-1)
-        retrieve_logits = torch.einsum("ahld,bhmd->ablm", query_layer, key_layer)  # (B,B,Nq,Nk)
+        retrieve_logits = torch.einsum("ahld,bhmd->ablm", query, key)  # (B,B,Nq,Nk)
         t2v_logits, max_idx1 = retrieve_logits.max(dim=-1)  # B,B,Nq,Nk -> B,B,Nq
         v2t_logits, max_idx2 = retrieve_logits.max(dim=-2)  # B,B,Nq,Nk -> B,B,Nk
         # Cross-view contrastive alignment
@@ -70,12 +75,25 @@ class Attention(nn.Module):
         ##################################################
 
         #--- You should implement the attention here ---#
-        raise NotImplementedError
+        if mask is not None:
+            atten_scores.mask_fill(mask[mask == 0], torch.float('-inf'))
+        atten_scores = self.dropout(atten_scores)
+        atten_probs = torch.softmax(atten_scores, dim=-1)
+        # [N, nH, Lq, L]
+
+        atten_output = torch.matmul(atten_probs, value)
+        # [N, nH, Lq, dh]
+
+        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
+        context_layer = context_layer.reshape(*new_context_layer_shape)
+        # [N, Lq, D]
+        
 
         #--- You don't need to change the code in this part. ---#
         context_layer += query_states
         context_layer = self.layer_norm(context_layer)
-        return context_layer, retrieve_logits, attention_probs.mean(1)
+        return context_layer, retrieve_logits, atten_probs.mean(1)
 
 
 class SCORER(nn.Module):

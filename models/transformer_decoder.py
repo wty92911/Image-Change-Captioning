@@ -138,7 +138,23 @@ class SelfAttention(nn.Module):
         note that the attention mask should be applied to the attention scores before softmax. 1 means not masked, 0 means masked.
         you should also apply dropout to the attention scores.
         """
-        raise NotImplementedError
+        # softmax(QKT/sqrt(D))V
+        query = self.transpose_for_scores(self.query(query_states))
+        key = self.transpose_for_scores(self.key(key_states))
+        value = self.transpose_for_scores(self.value(value_states))
+        # [N, nH, Lq, dh]
+        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
+        if attention_mask is not None:
+            atten_scores.mask_fill(attention_mask[attention_mask == 0], torch.float('-inf'))
+        atten_scores = self.dropout(atten_scores)
+        atten_probs = torch.softmax(atten_scores, dim=-1)
+        # [N, nH, Lq, L]
+        atten_output = torch.matmul(atten_probs, value)
+        # [N, nH, Lq, dh]
+        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
+        context_layer = context_layer.reshape(*new_context_layer_shape)
+        # [N, Lq, D]
         return context_layer
 
 class CrossAttention(nn.Module):
@@ -180,8 +196,27 @@ class CrossAttention(nn.Module):
         note that the attention mask should be applied to the attention scores before softmax. 1 means not masked, 0 means masked.
         you should also apply dropout to the attention scores, and return the mean attention scores over all heads.
         """
-        raise NotImplementedError
-        return context_layer, attention_probs.mean(1)
+        # softmax(QKT/sqrt(D))V
+        query = self.transpose_for_scores(self.query(query_states))
+        key = self.transpose_for_scores(self.key(key_states))
+        value = self.transpose_for_scores(self.value(value_states))
+        # [N, nH, Lq, dh]
+        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
+        if attention_mask is not None:
+            atten_scores.mask_fill(attention_mask[attention_mask == 0], torch.float('-inf'))
+        atten_scores = self.dropout(atten_scores)
+        atten_probs = torch.softmax(atten_scores, dim=-1)
+        # [N, nH, Lq, L]
+
+        atten_output = torch.matmul(atten_probs, value)
+        # [N, nH, Lq, dh]
+
+        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
+        context_layer = context_layer.reshape(*new_context_layer_shape)
+        # [N, Lq, D]
+        
+        return context_layer, atten_probs.mean(1)
 
 
 class Output(nn.Module):

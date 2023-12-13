@@ -8,7 +8,7 @@ import cv2
 
 import torch
 import torchvision
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_image_dir', required=True)
@@ -25,7 +25,6 @@ parser.add_argument('--batch_size', default=128, type=int)
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
-
 def build_model(args):
   if not hasattr(torchvision.models, args.model):
     raise ValueError('Invalid model "%s"' % args.model)
