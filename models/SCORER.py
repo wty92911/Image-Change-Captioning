@@ -76,7 +76,7 @@ class Attention(nn.Module):
 
         #--- You should implement the attention here ---#
         if mask is not None:
-            atten_scores.mask_fill(mask[mask == 0], torch.float('-inf'))
+            atten_scores.masked_fill(mask.reshape(batch, 1, L, 1) == 0, float('-inf'))
         atten_scores = self.dropout(atten_scores)
         atten_probs = torch.softmax(atten_scores, dim=-1)
         # [N, nH, Lq, L]

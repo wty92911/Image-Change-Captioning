@@ -49,7 +49,7 @@ class PositionEncoding(nn.Module):
         :Output: (*, L, D) the same size as input
         """
         pe = self.pe.data[:x.size(-2), :]  # (#x.size(-2), n_filters)
-        extra_dim = len(x.size()) - 2
+        extra_dim = len(x.size()) - 3
         for _ in range(extra_dim):
             pe = pe.unsqueeze(0)
         x = x + pe
@@ -145,7 +145,8 @@ class SelfAttention(nn.Module):
         # [N, nH, Lq, dh]
         atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
         if attention_mask is not None:
-            atten_scores.mask_fill(attention_mask[attention_mask == 0], torch.float('-inf'))
+            # print(atten_scores.size(), attention_mask.size())
+            atten_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
         atten_scores = self.dropout(atten_scores)
         atten_probs = torch.softmax(atten_scores, dim=-1)
         # [N, nH, Lq, L]
@@ -203,7 +204,7 @@ class CrossAttention(nn.Module):
         # [N, nH, Lq, dh]
         atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
         if attention_mask is not None:
-            atten_scores.mask_fill(attention_mask[attention_mask == 0], torch.float('-inf'))
+            atten_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
         atten_scores = self.dropout(atten_scores)
         atten_probs = torch.softmax(atten_scores, dim=-1)
         # [N, nH, Lq, L]

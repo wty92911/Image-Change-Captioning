@@ -22,7 +22,7 @@ from utils.utils import AverageMeter, accuracy, set_mode, save_checkpoint, \
                         EntropyLoss, LabelSmoothingLoss, CrossEn
 
 from utils.vis_utils import visualize_att
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # Load config
 parser = argparse.ArgumentParser()
