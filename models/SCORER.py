@@ -51,19 +51,23 @@ class Attention(nn.Module):
         you should also apply dropout to the attention scores, and return the mean attention scores over all heads.
         """
         #--- You should implement the linear projection here. ---#
-        # softmax(QKT/sqrt(D))V
-        query = self.transpose_for_scores(self.query(query_states))
-        key = self.transpose_for_scores(self.key(key_states))
-        value = self.transpose_for_scores(self.value(value_states))
-        # [N, nH, Lq, dh]
-        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
-        
+        mixed_query_layer = self.query(query_states)
+        mixed_key_layer = self.key(key_states)
+        mixed_value_layer = self.value(value_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+    
         #####################################
         #--- You don't need to change the code in this part. ---#
         # multi-head token-wise matching
         mask = torch.Tensor(np.ones([batch, L])).cuda()
         mask_sum = mask.sum(-1)
-        retrieve_logits = torch.einsum("ahld,bhmd->ablm", query, key)  # (B,B,Nq,Nk)
+        retrieve_logits = torch.einsum("ahld,bhmd->ablm", query_layer, key_layer)  # (B,B,Nq,Nk)
         t2v_logits, max_idx1 = retrieve_logits.max(dim=-1)  # B,B,Nq,Nk -> B,B,Nq
         v2t_logits, max_idx2 = retrieve_logits.max(dim=-2)  # B,B,Nq,Nk -> B,B,Nk
         # Cross-view contrastive alignment
@@ -76,24 +80,19 @@ class Attention(nn.Module):
 
         #--- You should implement the attention here ---#
         if mask is not None:
-            atten_scores.masked_fill(mask.reshape(batch, 1, L, 1) == 0, float('-inf'))
-        atten_scores = self.dropout(atten_scores)
-        atten_probs = torch.softmax(atten_scores, dim=-1)
-        # [N, nH, Lq, L]
-
-        atten_output = torch.matmul(atten_probs, value)
-        # [N, nH, Lq, dh]
-
-        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
-        context_layer = context_layer.reshape(*new_context_layer_shape)
-        # [N, Lq, D]
+            attention_scores = attention_scores + mask.unsqueeze(1).unsqueeze(2)
         
+        attention_scores = self.dropout(attention_scores)
+        attention_probs = F.softmax(attention_scores, dim=-1)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(*new_context_layer_shape)
 
         #--- You don't need to change the code in this part. ---#
         context_layer += query_states
         context_layer = self.layer_norm(context_layer)
-        return context_layer, retrieve_logits, atten_probs.mean(1)
+        return context_layer, retrieve_logits, attention_probs.mean(1)
 
 
 class SCORER(nn.Module):

@@ -301,7 +301,6 @@ class CrossEn(nn.Module):
         :return: loss (scalar)
         """
         batch_size = sim_matrix.shape[0]
-        labels = torch.arange(start=0, end=batch_size, dtype=torch.int64)
-        labels = labels.to(sim_matrix.device)
+        labels = torch.arange(start=0, end=batch_size, dtype=torch.int64, device=sim_matrix.device)
         loss = F.cross_entropy(sim_matrix, labels)
         return loss

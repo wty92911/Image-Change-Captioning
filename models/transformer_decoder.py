@@ -35,21 +35,24 @@ class PositionEncoding(nn.Module):
         you can refer to the lecture slides for the formula, or https://kazemnejad.com/blog/transformer_architecture_positional_encoding/ for a quick explanation.
         """
         super(PositionEncoding, self).__init__()
+        pe = self._get_positional_encoding(n_filters, max_len)
+        self.register_buffer("pe", pe)  # buffer is a tensor, not a variable, (L, D)
+
+    def _get_positional_encoding(self, n_filters, max_len):
         position = torch.arange(0, max_len).unsqueeze(1).float()
         div_term = torch.exp(torch.arange(0, n_filters, 2).float() * -(math.log(10000.0) / n_filters))
         pe = torch.zeros(max_len, n_filters)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # Add batch dimension
-        self.register_buffer("pe", pe)  # buffer is a tensor, not a variable, (L, D)
-
+        return pe
+    
     def forward(self, x):
         """
         :Input: (*, L, D)
         :Output: (*, L, D) the same size as input
         """
         pe = self.pe.data[:x.size(-2), :]  # (#x.size(-2), n_filters)
-        extra_dim = len(x.size()) - 3
+        extra_dim = len(x.size()) - 2
         for _ in range(extra_dim):
             pe = pe.unsqueeze(0)
         x = x + pe
@@ -132,30 +135,27 @@ class SelfAttention(nn.Module):
         Returns:
 
         """
-        """
-        == To Implement ==
-        calculate the self attention in Transformer. 
-        note that the attention mask should be applied to the attention scores before softmax. 1 means not masked, 0 means masked.
-        you should also apply dropout to the attention scores.
-        """
-        # softmax(QKT/sqrt(D))V
-        query = self.transpose_for_scores(self.query(query_states))
-        key = self.transpose_for_scores(self.key(key_states))
-        value = self.transpose_for_scores(self.value(value_states))
-        # [N, nH, Lq, dh]
-        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
+        mixed_query_layer = self.query(query_states)
+        mixed_key_layer = self.key(key_states)
+        mixed_value_layer = self.value(value_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
         if attention_mask is not None:
-            # print(atten_scores.size(), attention_mask.size())
-            atten_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
-        atten_scores = self.dropout(atten_scores)
-        atten_probs = torch.softmax(atten_scores, dim=-1)
-        # [N, nH, Lq, L]
-        atten_output = torch.matmul(atten_probs, value)
-        # [N, nH, Lq, dh]
-        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
-        context_layer = context_layer.reshape(*new_context_layer_shape)
-        # [N, Lq, D]
+            attention_scores = attention_scores + attention_mask.unsqueeze(1).unsqueeze(2)
+        
+        attention_scores = self.dropout(attention_scores)
+        attention_probs = F.softmax(attention_scores, dim=-1)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+
         return context_layer
 
 class CrossAttention(nn.Module):
@@ -197,27 +197,28 @@ class CrossAttention(nn.Module):
         note that the attention mask should be applied to the attention scores before softmax. 1 means not masked, 0 means masked.
         you should also apply dropout to the attention scores, and return the mean attention scores over all heads.
         """
-        # softmax(QKT/sqrt(D))V
-        query = self.transpose_for_scores(self.query(query_states))
-        key = self.transpose_for_scores(self.key(key_states))
-        value = self.transpose_for_scores(self.value(value_states))
-        # [N, nH, Lq, dh]
-        atten_scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / (self.attention_head_size ** 0.5)
+        mixed_query_layer = self.query(query_states)
+        mixed_key_layer = self.key(key_states)
+        mixed_value_layer = self.value(value_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
         if attention_mask is not None:
-            atten_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
-        atten_scores = self.dropout(atten_scores)
-        atten_probs = torch.softmax(atten_scores, dim=-1)
-        # [N, nH, Lq, L]
-
-        atten_output = torch.matmul(atten_probs, value)
-        # [N, nH, Lq, dh]
-
-        context_layer = atten_output.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size, )
-        context_layer = context_layer.reshape(*new_context_layer_shape)
-        # [N, Lq, D]
+            attention_scores = attention_scores + attention_mask.unsqueeze(1).unsqueeze(2)
         
-        return context_layer, atten_probs.mean(1)
+        attention_scores = self.dropout(attention_scores)
+        attention_probs = F.softmax(attention_scores, dim=-1)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+
+        return context_layer, attention_probs.mean(1)
 
 
 class Output(nn.Module):
@@ -508,6 +509,5 @@ class Speaker(nn.Module):
             if unfinished.sum() == 0:
                 break
         return text_input_ids, attention_weight
-
 
 
