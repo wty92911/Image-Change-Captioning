@@ -147,7 +147,7 @@ class SelfAttention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
         if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask.unsqueeze(1).unsqueeze(2)
+            attention_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
         
         attention_scores = self.dropout(attention_scores)
         attention_probs = F.softmax(attention_scores, dim=-1)
@@ -209,7 +209,7 @@ class CrossAttention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
         if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask.unsqueeze(1).unsqueeze(2)
+            attention_scores.masked_fill(attention_mask.reshape(attention_mask.size()[0], 1, attention_mask.size()[1], attention_mask.size()[2]) == 0, float('-inf'))
         
         attention_scores = self.dropout(attention_scores)
         attention_probs = F.softmax(attention_scores, dim=-1)
