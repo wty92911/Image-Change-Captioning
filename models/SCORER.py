@@ -80,8 +80,7 @@ class Attention(nn.Module):
 
         #--- You should implement the attention here ---#
         if mask is not None:
-            attention_scores.masked_fill(mask.reshape(mask.size()[0], 1, mask.size()[1], mask.size()[2]) == 0, float('-inf'))
-        
+            attention_scores.masked_fill(mask.reshape(batch, 1, L, 1) == 0, float('-inf'))
         attention_scores = self.dropout(attention_scores)
         attention_probs = F.softmax(attention_scores, dim=-1)
         context_layer = torch.matmul(attention_probs, value_layer)
